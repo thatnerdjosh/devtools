@@ -1,6 +1,11 @@
-version: '3.7'
+version: '2.4'
 services:
   doctl:
     image: digitalocean/doctl
     environment:
       DIGITALOCEAN_ACCESS_TOKEN: ${DIGITALOCEAN_ACCESS_TOKEN}
+    network_mode: bridge
+  kubectl:
+    extends:
+      file: ../kubectl/docker-compose.yml
+      service: kubectl
