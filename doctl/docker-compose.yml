@@ -1,7 +1,7 @@
 version: '2.4'
 services:
   doctl:
-    image: digitalocean/doctl
+    image: omnidapps/doctl
     environment:
       DIGITALOCEAN_ACCESS_TOKEN: ${DIGITALOCEAN_ACCESS_TOKEN}
     network_mode: bridge

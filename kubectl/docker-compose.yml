@@ -1,5 +1,5 @@
 version: '2.4'
 services:
   kubectl:
-    image: buoyantio/kubectl
+    image: omnidapps/kubectl
     network_mode: bridge
