@@ -69,6 +69,7 @@ Examples:
 
 	exitCode := iso2chroot.RunCLI(manager, flagSet.Args(), os.Stdout, os.Stderr, iso2chroot.CLIOptions{
 		MountDir: *src,
+		Stdin:    os.Stdin,
 	})
 	if exitCode != 0 {
 		os.Exit(exitCode)

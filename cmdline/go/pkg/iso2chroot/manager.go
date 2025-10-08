@@ -12,7 +12,7 @@ import (
 const defaultMountDir = "/tmp/iso2chroot"
 
 var mountFunc = func(isoFile, dstDir string) error {
-	cmd := exec.Command("mount", "-o", "loop,ro", isoFile, dstDir)
+	cmd := exec.Command("sudo", "mount", "-o", "loop,ro", isoFile, dstDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("mount ISO: %w: %s", err, strings.TrimSpace(string(output)))

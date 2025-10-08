@@ -1,8 +1,10 @@
 package iso2chroot
 
 import (
+	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -10,6 +12,7 @@ import (
 // CLIOptions configures RunCLI behavior.
 type CLIOptions struct {
 	MountDir string
+	Stdin    io.Reader
 }
 
 // RunCLI executes the iso2chroot command-line interface against the provided manager.
@@ -18,6 +21,10 @@ func RunCLI(manager *Manager, args []string, stdout, stderr io.Writer, opts CLIO
 	mountDir := opts.MountDir
 	if mountDir == "" {
 		mountDir = defaultMountDir
+	}
+	stdin := opts.Stdin
+	if stdin == nil {
+		stdin = os.Stdin
 	}
 
 	command := "list"
@@ -32,7 +39,7 @@ func RunCLI(manager *Manager, args []string, stdout, stderr io.Writer, opts CLIO
 	case "select":
 		return runSelect(manager, args, stdout, stderr)
 	case "create":
-		return runCreate(manager, args, stdout, stderr, mountDir)
+		return runCreate(manager, args, stdout, stderr, mountDir, stdin)
 	case "help", "-h", "--help":
 		fmt.Fprintln(stderr, "iso2chroot commands: list (default), select <index>, create <index>")
 		return 0
@@ -79,7 +86,7 @@ func runSelect(manager *Manager, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runCreate(manager *Manager, args []string, stdout, stderr io.Writer, mountDir string) int {
+func runCreate(manager *Manager, args []string, stdout, stderr io.Writer, mountDir string, stdin io.Reader) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "iso2chroot: create requires a numeric index argument.")
 		return 2
@@ -104,6 +111,22 @@ func runCreate(manager *Manager, args []string, stdout, stderr io.Writer, mountD
 	targetDir := mountDir
 	if targetDir == "" {
 		targetDir = defaultMountDir
+	}
+
+	reader := bufio.NewReader(stdin)
+	fmt.Fprintf(stdout, "iso2chroot will mount %s into %s using sudo.\n", iso.Name, targetDir)
+	fmt.Fprintln(stdout, "You may be prompted for your sudo password.")
+	fmt.Fprint(stdout, "Press Enter to continue or type 'n' to cancel: ")
+
+	response, readErr := reader.ReadString('\n')
+	if readErr != nil && readErr != io.EOF {
+		fmt.Fprintf(stderr, "iso2chroot: read confirmation: %v\n", readErr)
+		return 1
+	}
+	choice := strings.TrimSpace(strings.ToLower(response))
+	if choice != "" && choice != "y" && choice != "yes" {
+		fmt.Fprintln(stderr, "iso2chroot: create cancelled.")
+		return 1
 	}
 
 	if err := manager.Mount(index, targetDir); err != nil {

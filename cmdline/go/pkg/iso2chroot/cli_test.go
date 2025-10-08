@@ -116,7 +116,10 @@ func TestRunCLICreate(t *testing.T) {
 		return nil
 	}
 
-	code := RunCLI(manager, []string{"create", "1"}, &stdout, &stderr, CLIOptions{MountDir: targetDir})
+	code := RunCLI(manager, []string{"create", "1"}, &stdout, &stderr, CLIOptions{
+		MountDir: targetDir,
+		Stdin:    bytes.NewBufferString("\n"),
+	})
 	if code != 0 {
 		t.Fatalf("RunCLI() exit code = %d, want 0", code)
 	}
@@ -133,9 +136,12 @@ func TestRunCLICreate(t *testing.T) {
 	if gotDir != targetDir {
 		t.Fatalf("mount dir = %q, want %q", gotDir, targetDir)
 	}
-	output := strings.TrimSpace(stdout.String())
+	output := stdout.String()
+	if !strings.Contains(output, "iso2chroot will mount a.iso into "+targetDir) {
+		t.Fatalf("stdout = %q, want warning about mounting into %s", output, targetDir)
+	}
 	if !strings.Contains(output, "Mounted a.iso to "+targetDir) {
-		t.Fatalf("stdout = %q, want success message mentioning %s", stdout.String(), targetDir)
+		t.Fatalf("stdout = %q, want success message mentioning %s", output, targetDir)
 	}
 }
 
@@ -158,7 +164,9 @@ func TestRunCLICreateDefaultMountDir(t *testing.T) {
 		return nil
 	}
 
-	code := RunCLI(manager, []string{"create", "1"}, &stdout, &stderr, CLIOptions{})
+	code := RunCLI(manager, []string{"create", "1"}, &stdout, &stderr, CLIOptions{
+		Stdin: bytes.NewBufferString("\n"),
+	})
 	if code != 0 {
 		t.Fatalf("RunCLI() exit code = %d, want 0", code)
 	}
@@ -177,5 +185,38 @@ func TestRunCLICreateMissingArgument(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Fatal("expected error message on stderr")
+	}
+}
+
+func TestRunCLICreateCancelled(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "only.iso"), []byte(""), 0o644); err != nil {
+		t.Fatalf("write iso: %v", err)
+	}
+
+	manager := NewManager(dir)
+	var stdout, stderr bytes.Buffer
+
+	var (
+		originalMount = mountFunc
+		mountCalled   bool
+	)
+	defer func() { mountFunc = originalMount }()
+	mountFunc = func(isoFile, dstDir string) error {
+		mountCalled = true
+		return nil
+	}
+
+	code := RunCLI(manager, []string{"create", "1"}, &stdout, &stderr, CLIOptions{
+		Stdin: bytes.NewBufferString("n\n"),
+	})
+	if code != 1 {
+		t.Fatalf("RunCLI() exit code = %d, want 1", code)
+	}
+	if mountCalled {
+		t.Fatal("expected mount not to be called")
+	}
+	if !strings.Contains(stderr.String(), "create cancelled") {
+		t.Fatalf("stderr = %q, want cancellation notice", stderr.String())
 	}
 }
