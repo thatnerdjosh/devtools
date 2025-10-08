@@ -7,9 +7,19 @@ import (
 	"strings"
 )
 
+// CLIOptions configures RunCLI behavior.
+type CLIOptions struct {
+	MountDir string
+}
+
 // RunCLI executes the iso2chroot command-line interface against the provided manager.
 // It returns a process exit code, allowing callers to exit appropriately.
-func RunCLI(manager *Manager, args []string, stdout, stderr io.Writer) int {
+func RunCLI(manager *Manager, args []string, stdout, stderr io.Writer, opts CLIOptions) int {
+	mountDir := opts.MountDir
+	if mountDir == "" {
+		mountDir = defaultMountDir
+	}
+
 	command := "list"
 	if len(args) > 0 {
 		command = args[0]
@@ -21,8 +31,10 @@ func RunCLI(manager *Manager, args []string, stdout, stderr io.Writer) int {
 		return runList(manager, stdout, stderr)
 	case "select":
 		return runSelect(manager, args, stdout, stderr)
+	case "create":
+		return runCreate(manager, args, stdout, stderr, mountDir)
 	case "help", "-h", "--help":
-		fmt.Fprintln(stderr, "iso2chroot commands: list (default), select <index>")
+		fmt.Fprintln(stderr, "iso2chroot commands: list (default), select <index>, create <index>")
 		return 0
 	default:
 		fmt.Fprintf(stderr, "iso2chroot: unknown command %q\n", command)
@@ -64,6 +76,42 @@ func runSelect(manager *Manager, args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintln(stdout, iso.Name)
+	return 0
+}
+
+func runCreate(manager *Manager, args []string, stdout, stderr io.Writer, mountDir string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "iso2chroot: create requires a numeric index argument.")
+		return 2
+	}
+	if _, err := manager.Load(); err != nil {
+		fmt.Fprintf(stderr, "iso2chroot: %v\n", err)
+		return 1
+	}
+
+	index, err := strconv.Atoi(args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "iso2chroot: invalid index %q\n", args[0])
+		return 2
+	}
+
+	iso, err := manager.Select(index)
+	if err != nil {
+		fmt.Fprintf(stderr, "iso2chroot: %v\n", err)
+		return 1
+	}
+
+	targetDir := mountDir
+	if targetDir == "" {
+		targetDir = defaultMountDir
+	}
+
+	if err := manager.Mount(index, targetDir); err != nil {
+		fmt.Fprintf(stderr, "iso2chroot: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "Mounted %s to %s\n", iso.Name, targetDir)
 	return 0
 }
 

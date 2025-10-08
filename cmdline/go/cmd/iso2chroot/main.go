@@ -12,6 +12,7 @@ import (
 
 const (
 	defaultISOdir = "/var/lib/libvirt/isos"
+	defaultSrcDir = "/tmp/iso2chroot"
 )
 
 func main() {
@@ -19,6 +20,7 @@ func main() {
 	flagSet.SetOutput(os.Stderr)
 
 	dir := flagSet.String("dir", defaultISOdir, "Directory containing ISO images")
+	src := flagSet.String("src", defaultSrcDir, "Directory to mount the selected ISO into")
 	experimentalTUI := flagSet.Bool("experimental-tui", false, "Launch the experimental TUI interface")
 
 	flagSet.Usage = func() {
@@ -27,6 +29,7 @@ func main() {
 Commands:
     list            List available ISO images (default)
     select <index>  Print the ISO identified by its numeric index
+    create <index>  Mount the ISO for chroot preparation
 
 Flags:
 `, flagSet.Name())
@@ -35,7 +38,8 @@ Flags:
 Examples:
     iso2chroot list
     iso2chroot select 2
-    iso2chroot --dir /path/to/isos list
+    iso2chroot create 1
+    iso2chroot --dir /path/to/isos --src /tmp/build-root create 2
 `)
 	}
 
@@ -63,7 +67,9 @@ Examples:
 		return
 	}
 
-	exitCode := iso2chroot.RunCLI(manager, flagSet.Args(), os.Stdout, os.Stderr)
+	exitCode := iso2chroot.RunCLI(manager, flagSet.Args(), os.Stdout, os.Stderr, iso2chroot.CLIOptions{
+		MountDir: *src,
+	})
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}

@@ -3,9 +3,22 @@ package iso2chroot
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
+
+const defaultMountDir = "/tmp/iso2chroot"
+
+var mountFunc = func(isoFile, dstDir string) error {
+	cmd := exec.Command("mount", "-o", "loop,ro", isoFile, dstDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mount ISO: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
 
 // ISOInfo represents a single ISO entry.
 type ISOInfo struct {
@@ -46,26 +59,39 @@ func (m *Manager) Load() (ListResult, error) {
 		return ListResult{}, fmt.Errorf("read %s: %w", m.dir, err)
 	}
 
-	m.isoByChoice = make(map[int]ISOInfo, len(entries))
-	if cap(m.ordered) < len(entries) {
-		m.ordered = make([]ISOInfo, 0, len(entries))
-	} else {
-		m.ordered = m.ordered[:0]
+	isoEntries := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
+			continue
+		}
+		isoEntries = append(isoEntries, entry)
 	}
 
-	if len(entries) == 0 {
+	if len(isoEntries) == 0 {
+		m.isoByChoice = make(map[int]ISOInfo)
+		m.ordered = m.ordered[:0]
 		return ListResult{
-			Display: fmt.Sprintf("No entries found in %s", m.dir),
+			Display: fmt.Sprintf("No ISO files found in %s", m.dir),
 			Count:   0,
 		}, nil
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
+	m.isoByChoice = make(map[int]ISOInfo, len(isoEntries))
+	if cap(m.ordered) < len(isoEntries) {
+		m.ordered = make([]ISOInfo, 0, len(isoEntries))
+	} else {
+		m.ordered = m.ordered[:0]
+	}
+
+	sort.Slice(isoEntries, func(i, j int) bool {
+		return isoEntries[i].Name() < isoEntries[j].Name()
 	})
 
 	var b strings.Builder
-	for i, entry := range entries {
+	for i, entry := range isoEntries {
 		info := ISOInfo{Name: entry.Name()}
 		m.ordered = append(m.ordered, info)
 		index := i + 1
@@ -77,6 +103,24 @@ func (m *Manager) Load() (ListResult, error) {
 		Display: b.String(),
 		Count:   len(m.ordered),
 	}, nil
+}
+
+func (m *Manager) Mount(choice int, dstDir string) error {
+	iso, err := m.Select(choice)
+	if err != nil {
+		return err
+	}
+
+	if dstDir == "" {
+		dstDir = defaultMountDir
+	}
+
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return fmt.Errorf("prepare mount dir %s: %w", dstDir, err)
+	}
+
+	isoFile := filepath.Join(m.dir, iso.Name)
+	return mountFunc(isoFile, dstDir)
 }
 
 // Select returns the ISO associated with the provided choice number.
